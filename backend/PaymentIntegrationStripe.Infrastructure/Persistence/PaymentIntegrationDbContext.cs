@@ -20,7 +20,7 @@ public sealed class PaymentIntegrationDbContext(DbContextOptions<PaymentIntegrat
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<PaymentStatusHistory> PaymentStatusHistory => Set<PaymentStatusHistory>();
     public DbSet<Refund> Refunds => Set<Refund>();
-    public DbSet<RefundAttempts> RefundAttempts => Set<RefundAttempts>();
+    public DbSet<RefundAttempt> RefundAttempts => Set<RefundAttempt>();
     public DbSet<StripeWebhookEvent> StripeWebhookEvents => Set<StripeWebhookEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
