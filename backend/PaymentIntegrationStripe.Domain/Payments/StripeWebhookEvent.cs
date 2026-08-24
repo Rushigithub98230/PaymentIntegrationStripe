@@ -6,7 +6,7 @@ public sealed class StripeWebhookEvent : Entity
 {
     private StripeWebhookEvent() { }
 
-    public StripeWebhookEvent(string stripeEventId, string eventType, string payloadHash)
+    public StripeWebhookEvent(string stripeEventId, string eventType, string payloadHash, DateTime receivedAtUtc)
     {
         if (string.IsNullOrWhiteSpace(stripeEventId)) throw new ArgumentException("Stripe event ID is required.", nameof(stripeEventId));
         if (string.IsNullOrWhiteSpace(eventType)) throw new ArgumentException("Stripe event type is required.", nameof(eventType));
@@ -15,11 +15,13 @@ public sealed class StripeWebhookEvent : Entity
         StripeEventId = stripeEventId.Trim();
         EventType = eventType.Trim();
         PayloadHash = payloadHash.Trim();
+        ReceivedAtUtc = receivedAtUtc;
     }
 
     public string StripeEventId { get; private set; } = null!;
     public string EventType { get; private set; } = null!;
     public string PayloadHash { get; private set; } = null!;
+    public DateTime ReceivedAtUtc { get; private set; }
     public bool Processed { get; private set; }
     public DateTime? ProcessedAtUtc { get; private set; }
     public int AttemptCount { get; private set; }
@@ -30,6 +32,7 @@ public sealed class StripeWebhookEvent : Entity
         Processed = true;
         ProcessedAtUtc = DateTime.UtcNow;
         LastError = null;
+        AttemptCount++;
     }
 
     public void RecordFailure(string error)
