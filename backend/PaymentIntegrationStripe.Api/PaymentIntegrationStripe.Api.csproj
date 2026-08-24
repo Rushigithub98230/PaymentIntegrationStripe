@@ -5,8 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\PaymentIntegrationStripe.Application\PaymentIntegrationStripe.Application.csproj" />
-    <ProjectReference Include="..\PaymentIntegrationStripe.Infrastructure\PaymentIntegrationStripe.Infrastructure.csproj" />
+    <ProjectReference Include="..\PaymentIntegrationStripe.Application\Application.csproj" />
+    <ProjectReference Include="..\PaymentIntegrationStripe.Infrastructure\Infrastructure.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.19" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
