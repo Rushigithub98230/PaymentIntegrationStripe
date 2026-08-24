@@ -14,8 +14,11 @@ public sealed class RefundConfiguration : IEntityTypeConfiguration<Refund>
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(x => x.Reason).HasMaxLength(500);
         builder.Property(x => x.ProviderRefundId).HasMaxLength(200);
+        builder.Property(x => x.FailureCode).HasMaxLength(200);
+        builder.Property(x => x.FailureMessage).HasMaxLength(2000);
         builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.HasIndex(x => x.ProviderRefundId).IsUnique().HasFilter("[ProviderRefundId] IS NOT NULL");
         builder.HasIndex(x => new { x.PaymentId, x.CreatedAtUtc });
+        builder.HasMany<RefundAttempt>().WithOne().HasForeignKey(x => x.RefundId).OnDelete(DeleteBehavior.Cascade);
     }
 }
