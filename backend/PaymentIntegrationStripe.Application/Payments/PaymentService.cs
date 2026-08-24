@@ -4,12 +4,9 @@ namespace PaymentIntegrationStripe.Application.Payments;
 
 public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepository paymentRepository)
 {
-    public async Task<PaymentCreationResult> CreatePaymentIntentAsync(
-        CreatePaymentCommand command,
-        CancellationToken cancellationToken)
+    public async Task<PaymentCreationResult> CreatePaymentIntentAsync(CreatePaymentCommand command, CancellationToken cancellationToken)
     {
         Validate(command);
-
         var currency = command.Currency.Trim().ToLowerInvariant();
         var idempotencyKey = command.IdempotencyKey.Trim();
         var requestedAmount = decimal.Round(command.Amount, 2, MidpointRounding.ToEven);
@@ -23,9 +20,10 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
             payment.SetProviderCustomer(command.ProviderCustomerId);
 
         await paymentRepository.AddAsync(payment, cancellationToken);
+        await paymentRepository.AddAttemptAsync(new PaymentAttempt(payment.Id, 1, idempotencyKey), cancellationToken);
 
-        // Reserve the application idempotency key before calling Stripe. The unique database
-        // constraint makes this reservation atomic across concurrent API requests.
+        // Reserve the application idempotency key before calling Stripe. The database unique
+        // constraint prevents concurrent requests from both reaching Stripe for the same key.
         try
         {
             await paymentRepository.SaveChangesAsync(cancellationToken);
@@ -33,9 +31,7 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
         catch (Exception ex) when (IsUniqueConstraintViolation(ex))
         {
             var concurrentPayment = await paymentRepository.GetByIdempotencyKeyAsync(idempotencyKey, cancellationToken);
-            if (concurrentPayment is null)
-                throw;
-
+            if (concurrentPayment is null) throw;
             return ValidateAndReturnExisting(concurrentPayment, command.OrderId, requestedAmount, currency);
         }
 
@@ -57,24 +53,16 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
         payment.SetProviderPaymentIntent(gatewayResult.ProviderPaymentIntentId);
         if (!string.IsNullOrWhiteSpace(gatewayResult.ProviderChargeId))
             payment.SetProviderCharge(gatewayResult.ProviderChargeId);
-
-        var nextStatus = MapStatus(gatewayResult.ProviderStatus);
-        payment.TransitionTo(nextStatus, gatewayResult.FailureCode, gatewayResult.FailureMessage);
+        payment.TransitionTo(MapStatus(gatewayResult.ProviderStatus), gatewayResult.FailureCode, gatewayResult.FailureMessage);
         await paymentRepository.SaveChangesAsync(cancellationToken);
 
         return ToResult(payment, gatewayResult.FailureCode, gatewayResult.FailureMessage);
     }
 
-    private static PaymentCreationResult ValidateAndReturnExisting(
-        Payment existing,
-        Guid orderId,
-        decimal amount,
-        string currency)
+    private static PaymentCreationResult ValidateAndReturnExisting(Payment existing, Guid orderId, decimal amount, string currency)
     {
-        if (existing.OrderId != orderId || existing.Amount != amount ||
-            !string.Equals(existing.Currency, currency, StringComparison.OrdinalIgnoreCase))
+        if (existing.OrderId != orderId || existing.Amount != amount || !string.Equals(existing.Currency, currency, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The idempotency key is already associated with a different payment request.");
-
         return ToResult(existing);
     }
 
@@ -89,8 +77,8 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
     };
 
     private static PaymentCreationResult ToResult(Payment payment, string? failureCode = null, string? failureMessage = null) =>
-        new(payment.ProviderPaymentIntentId ?? string.Empty, payment.Status.ToString(),
-            payment.Status == PaymentStatus.Succeeded, failureCode ?? payment.LastFailureCode, failureMessage ?? payment.LastFailureMessage);
+        new(payment.ProviderPaymentIntentId ?? string.Empty, payment.Status.ToString(), payment.Status == PaymentStatus.Succeeded,
+            failureCode ?? payment.LastFailureCode, failureMessage ?? payment.LastFailureMessage);
 
     private static void Validate(CreatePaymentCommand command)
     {
@@ -100,16 +88,13 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
         if (string.IsNullOrWhiteSpace(command.IdempotencyKey)) throw new ArgumentException("Idempotency key is required.", nameof(command));
     }
 
-    private static long ToMinorUnits(decimal amount, string currency)
-    {
-        var multiplier = currency is "jpy" or "krw" ? 1m : 100m;
-        return checked((long)decimal.Round(amount * multiplier, 0, MidpointRounding.ToEven));
-    }
+    private static long ToMinorUnits(decimal amount, string currency) =>
+        checked((long)decimal.Round(amount * (currency is "jpy" or "krw" ? 1m : 100m), 0, MidpointRounding.ToEven));
 
     private static bool IsUniqueConstraintViolation(Exception exception) =>
-        exception is InvalidOperationException { InnerException: not null } inner && IsUniqueConstraintViolation(inner.InnerException!) ||
         exception.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) ||
-        exception.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
+        exception.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) ||
+        (exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException));
 }
 
 public sealed record CreatePaymentCommand(Guid OrderId, decimal Amount, string Currency, string IdempotencyKey, string? ProviderCustomerId);
