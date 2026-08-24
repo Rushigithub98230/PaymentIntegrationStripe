@@ -13,10 +13,16 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.Currency).HasMaxLength(3).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(x => x.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder.Property(x => x.ProviderPaymentId).HasMaxLength(200);
+        builder.Property(x => x.ProviderCustomerId).HasMaxLength(200);
+        builder.Property(x => x.ProviderPaymentIntentId).HasMaxLength(200);
+        builder.Property(x => x.ProviderChargeId).HasMaxLength(200);
+        builder.Property(x => x.AmountRefunded).HasPrecision(19, 4).IsRequired();
+        builder.Property(x => x.LastFailureCode).HasMaxLength(200);
+        builder.Property(x => x.LastFailureMessage).HasMaxLength(2000);
         builder.Property(x => x.CreatedAtUtc).IsRequired();
-        builder.Property(x => x.RowVersion).IsRowVersion();
         builder.HasIndex(x => x.IdempotencyKey).IsUnique();
-        builder.HasIndex(x => x.ProviderPaymentId).IsUnique().HasFilter("[ProviderPaymentId] IS NOT NULL");
+        builder.HasIndex(x => x.ProviderPaymentIntentId).IsUnique().HasFilter("[ProviderPaymentIntentId] IS NOT NULL");
+        builder.HasIndex(x => x.ProviderChargeId).IsUnique().HasFilter("[ProviderChargeId] IS NOT NULL");
+        builder.HasIndex(x => new { x.OrderId, x.CreatedAtUtc });
     }
 }
