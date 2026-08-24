@@ -18,6 +18,8 @@ builder.Services.AddDbContext<PaymentIntegrationDbContext>(options =>
 builder.Services.AddScoped<IMoneyConverter, StripeMoneyConverter>();
 builder.Services.AddScoped<IPaymentGateway, StripePaymentGateway>();
 builder.Services.AddScoped<IPaymentRepository, EfPaymentRepository>();
+builder.Services.AddScoped<IStripeWebhookProcessor, StripeWebhookProcessor>();
+builder.Services.AddHostedService<StripeWebhookBackgroundService>();
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 
 var stripeOptions = builder.Configuration.GetSection(StripeOptions.SectionName).Get<StripeOptions>()
