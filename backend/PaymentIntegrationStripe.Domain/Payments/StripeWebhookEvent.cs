@@ -1,0 +1,22 @@
+using PaymentIntegrationStripe.Domain.Common;
+
+namespace PaymentIntegrationStripe.Domain.Payments;
+
+public sealed class StripeWebhookEvent : Entity
+{
+    private StripeWebhookEvent() { }
+    public StripeWebhookEvent(string stripeEventId, string eventType, string payloadHash)
+    {
+        if (string.IsNullOrWhiteSpace(stripeEventId)) throw new ArgumentException("Stripe event ID is required.", nameof(stripeEventId));
+        StripeEventId = stripeEventId.Trim(); EventType = eventType.Trim(); PayloadHash = payloadHash.Trim();
+    }
+    public string StripeEventId { get; private set; } = null!;
+    public string EventType { get; private set; } = null!;
+    public string PayloadHash { get; private set; } = null!;
+    public bool Processed { get; private set; }
+    public DateTime? ProcessedAtUtc { get; private set; }
+    public int AttemptCount { get; private set; }
+    public string? LastError { get; private set; }
+    public void MarkProcessed() { Processed = true; ProcessedAtUtc = DateTime.UtcNow; LastError = null; }
+    public void RecordFailure(string error) { AttemptCount++; LastError = error; }
+}
