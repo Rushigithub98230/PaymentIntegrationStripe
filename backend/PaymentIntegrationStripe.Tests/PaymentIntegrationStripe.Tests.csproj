@@ -6,9 +6,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\PaymentIntegrationStripe.Domain\PaymentIntegrationStripe.Domain.csproj" />
-    <ProjectReference Include="..\PaymentIntegrationStripe.Application\PaymentIntegrationStripe.Application.csproj" />
-    <ProjectReference Include="..\PaymentIntegrationStripe.Infrastructure\PaymentIntegrationStripe.Infrastructure.csproj" />
+    <ProjectReference Include="..\PaymentIntegrationStripe.Domain\Domain.csproj" />
+    <ProjectReference Include="..\PaymentIntegrationStripe.Application\Application.csproj" />
+    <ProjectReference Include="..\PaymentIntegrationStripe.Infrastructure\Infrastructure.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
