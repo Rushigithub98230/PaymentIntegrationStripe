@@ -2,12 +2,23 @@ name: Backend CI
 
 on:
   push:
-    branches: [ main, develop, 'feature/**' ]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-test:
@@ -25,19 +36,22 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Display .NET information
+        run: dotnet --info
+
       - name: Restore
-        run: dotnet restore PaymentIntegrationStripe.sln
+        run: dotnet restore PaymentIntegrationStripe.sln --locked-mode
 
       - name: Build
-        run: dotnet build PaymentIntegrationStripe.sln --configuration Release --no-restore
+        run: dotnet build PaymentIntegrationStripe.sln --configuration Release --no-restore --warnaserror
 
       - name: Test
-        run: dotnet test PaymentIntegrationStripe.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test PaymentIntegrationStripe.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults --blame-hang-timeout 2m
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-test-results
-          path: '**/TestResults/*.trx'
+          name: dotnet-test-results-${{ github.run_number }}
+          path: backend/TestResults/**/*.trx
           if-no-files-found: ignore
