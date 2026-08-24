@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using PaymentIntegrationStripe.Domain.Catalog;
+using PaymentIntegrationStripe.Domain.Orders;
 using PaymentIntegrationStripe.Domain.Payments;
 
 namespace PaymentIntegrationStripe.Infrastructure.Persistence;
@@ -6,6 +8,11 @@ namespace PaymentIntegrationStripe.Infrastructure.Persistence;
 public sealed class PaymentIntegrationDbContext(DbContextOptions<PaymentIntegrationDbContext> options)
     : DbContext(options)
 {
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<Inventory> Inventory => Set<Inventory>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
