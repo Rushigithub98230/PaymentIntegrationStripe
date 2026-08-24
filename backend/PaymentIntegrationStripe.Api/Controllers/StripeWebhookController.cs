@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -68,11 +69,7 @@ public sealed class StripeWebhookController(
             return raced is not null ? Ok() : StatusCode(StatusCodes.Status500InternalServerError);
         }
 
-        // Event persistence is intentionally separated from payment mutation.
-        // A worker can safely retry this persisted event without receiving Stripe again.
-        webhookEvent.MarkProcessed();
-        await db.SaveChangesAsync(cancellationToken);
-
-        return Ok();
+        // Persist first. A background worker will process this event transactionally.
+        return Accepted();
     }
 }
