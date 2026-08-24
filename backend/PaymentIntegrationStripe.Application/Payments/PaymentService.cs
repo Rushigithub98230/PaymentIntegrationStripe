@@ -12,60 +12,70 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
 
         var currency = command.Currency.Trim().ToLowerInvariant();
         var idempotencyKey = command.IdempotencyKey.Trim();
+        var requestedAmount = decimal.Round(command.Amount, 2, MidpointRounding.ToEven);
+
         var existing = await paymentRepository.GetByIdempotencyKeyAsync(idempotencyKey, cancellationToken);
-
         if (existing is not null)
-        {
-            if (existing.OrderId != command.OrderId ||
-                existing.Amount != decimal.Round(command.Amount, 2, MidpointRounding.ToEven) ||
-                !string.Equals(existing.Currency, currency, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("The idempotency key is already associated with a different payment request.");
-            }
+            return ValidateAndReturnExisting(existing, command.OrderId, requestedAmount, currency);
 
-            return ToResult(existing);
-        }
-
-        var payment = new Payment(command.OrderId, command.Amount, currency, idempotencyKey);
+        var payment = new Payment(command.OrderId, requestedAmount, currency, idempotencyKey);
         if (!string.IsNullOrWhiteSpace(command.ProviderCustomerId))
             payment.SetProviderCustomer(command.ProviderCustomerId);
 
         await paymentRepository.AddAsync(payment, cancellationToken);
 
+        // Reserve the application idempotency key before calling Stripe. The unique database
+        // constraint makes this reservation atomic across concurrent API requests.
         try
         {
-            var gatewayResult = await paymentGateway.CreatePaymentIntentAsync(
-                new CreatePaymentIntentRequest(
-                    currency,
-                    ToMinorUnits(command.Amount, currency),
-                    idempotencyKey,
-                    command.ProviderCustomerId,
-                    command.OrderId.ToString("N"),
-                    new Dictionary<string, string>
-                    {
-                        ["order_id"] = command.OrderId.ToString(),
-                        ["payment_id"] = payment.Id.ToString(),
-                        ["idempotency_key"] = idempotencyKey
-                    }),
-                cancellationToken);
-
-            payment.SetProviderPaymentIntent(gatewayResult.ProviderPaymentIntentId);
-            if (!string.IsNullOrWhiteSpace(gatewayResult.ProviderChargeId))
-                payment.SetProviderCharge(gatewayResult.ProviderChargeId);
-
-            var nextStatus = MapStatus(gatewayResult.ProviderStatus);
-            payment.TransitionTo(nextStatus, gatewayResult.FailureCode, gatewayResult.FailureMessage);
             await paymentRepository.SaveChangesAsync(cancellationToken);
-
-            return ToResult(payment, gatewayResult.FailureCode, gatewayResult.FailureMessage);
         }
-        catch
+        catch (Exception ex) when (IsUniqueConstraintViolation(ex))
         {
-            // The local record is intentionally retained. The verification/reconciliation
-            // worker can later resolve an ambiguous Stripe outcome using the same key.
-            await paymentRepository.SaveChangesAsync(cancellationToken);
-            throw;
+            var concurrentPayment = await paymentRepository.GetByIdempotencyKeyAsync(idempotencyKey, cancellationToken);
+            if (concurrentPayment is null)
+                throw;
+
+            return ValidateAndReturnExisting(concurrentPayment, command.OrderId, requestedAmount, currency);
         }
+
+        var gatewayResult = await paymentGateway.CreatePaymentIntentAsync(
+            new CreatePaymentIntentRequest(
+                currency,
+                ToMinorUnits(requestedAmount, currency),
+                idempotencyKey,
+                command.ProviderCustomerId,
+                command.OrderId.ToString("N"),
+                new Dictionary<string, string>
+                {
+                    ["order_id"] = command.OrderId.ToString(),
+                    ["payment_id"] = payment.Id.ToString(),
+                    ["idempotency_key"] = idempotencyKey
+                }),
+            cancellationToken);
+
+        payment.SetProviderPaymentIntent(gatewayResult.ProviderPaymentIntentId);
+        if (!string.IsNullOrWhiteSpace(gatewayResult.ProviderChargeId))
+            payment.SetProviderCharge(gatewayResult.ProviderChargeId);
+
+        var nextStatus = MapStatus(gatewayResult.ProviderStatus);
+        payment.TransitionTo(nextStatus, gatewayResult.FailureCode, gatewayResult.FailureMessage);
+        await paymentRepository.SaveChangesAsync(cancellationToken);
+
+        return ToResult(payment, gatewayResult.FailureCode, gatewayResult.FailureMessage);
+    }
+
+    private static PaymentCreationResult ValidateAndReturnExisting(
+        Payment existing,
+        Guid orderId,
+        decimal amount,
+        string currency)
+    {
+        if (existing.OrderId != orderId || existing.Amount != amount ||
+            !string.Equals(existing.Currency, currency, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The idempotency key is already associated with a different payment request.");
+
+        return ToResult(existing);
     }
 
     private static PaymentStatus MapStatus(string providerStatus) => providerStatus switch
@@ -95,6 +105,11 @@ public sealed class PaymentService(IPaymentGateway paymentGateway, IPaymentRepos
         var multiplier = currency is "jpy" or "krw" ? 1m : 100m;
         return checked((long)decimal.Round(amount * multiplier, 0, MidpointRounding.ToEven));
     }
+
+    private static bool IsUniqueConstraintViolation(Exception exception) =>
+        exception is InvalidOperationException { InnerException: not null } inner && IsUniqueConstraintViolation(inner.InnerException!) ||
+        exception.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record CreatePaymentCommand(Guid OrderId, decimal Amount, string Currency, string IdempotencyKey, string? ProviderCustomerId);
