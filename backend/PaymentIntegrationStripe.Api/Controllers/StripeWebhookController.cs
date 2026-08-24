@@ -27,16 +27,18 @@ public sealed class StripeWebhookController(
         var payload = await reader.ReadToEndAsync(cancellationToken);
         Request.Body.Position = 0;
 
-        if (string.IsNullOrWhiteSpace(stripeOptions.Value.WebhookSecret))
+        var signature = Request.Headers.StripeSignature.ToString();
+        if (string.IsNullOrWhiteSpace(signature))
+            return Unauthorized();
+
+        var secret = stripeOptions.Value.WebhookSecret;
+        if (string.IsNullOrWhiteSpace(secret))
             return StatusCode(StatusCodes.Status500InternalServerError, "Stripe webhook secret is not configured.");
 
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ConstructEvent(
-                payload,
-                Request.Headers.StripeSignature.ToString(),
-                stripeOptions.Value.WebhookSecret);
+            stripeEvent = EventUtility.ConstructEvent(payload, signature, secret);
         }
         catch (StripeException ex)
         {
@@ -44,13 +46,20 @@ public sealed class StripeWebhookController(
             return Unauthorized();
         }
 
-        var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+        if (string.IsNullOrWhiteSpace(stripeEvent.Id))
+            return BadRequest("Stripe event ID is missing.");
+
         var existing = await db.StripeWebhookEvents
             .SingleOrDefaultAsync(x => x.StripeEventId == stripeEvent.Id, cancellationToken);
 
         if (existing is not null)
+        {
+            // A previously accepted event is already durable. The worker can retry it
+            // when Processed=false; no duplicate financial operation is created here.
             return existing.Processed ? Ok() : Accepted();
+        }
 
+        var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
         var webhookEvent = new StripeWebhookEvent(
             stripeEvent.Id,
             stripeEvent.Type,
@@ -62,14 +71,23 @@ public sealed class StripeWebhookController(
         {
             await db.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            // A concurrent delivery may have inserted the same Stripe event ID.
+            // Only treat it as a duplicate when the event is now present; unrelated
+            // database failures must surface as a server error.
+            logger.LogInformation(ex, "Concurrent Stripe webhook persistence detected for {StripeEventId}.", stripeEvent.Id);
             var raced = await db.StripeWebhookEvents
+                .AsNoTracking()
                 .SingleOrDefaultAsync(x => x.StripeEventId == stripeEvent.Id, cancellationToken);
-            return raced is not null ? Ok() : StatusCode(StatusCodes.Status500InternalServerError);
+
+            if (raced is not null)
+                return raced.Processed ? Ok() : Accepted();
+
+            return StatusCode(StatusCodes.Status500InternalServerError);
         }
 
-        // Persist first. A background worker will process this event transactionally.
+        // Persist first. A background worker processes this durable event transactionally.
         return Accepted();
     }
 }
