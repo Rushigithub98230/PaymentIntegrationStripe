@@ -20,6 +20,7 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.LastFailureCode).HasMaxLength(200);
         builder.Property(x => x.LastFailureMessage).HasMaxLength(2000);
         builder.Property(x => x.CreatedAtUtc).IsRequired();
+        builder.Property(x => x.RowVersion).IsRowVersion().IsConcurrencyToken();
         builder.HasIndex(x => x.IdempotencyKey).IsUnique();
         builder.HasIndex(x => x.ProviderPaymentIntentId).IsUnique().HasFilter("[ProviderPaymentIntentId] IS NOT NULL");
         builder.HasIndex(x => x.ProviderChargeId).IsUnique().HasFilter("[ProviderChargeId] IS NOT NULL");
