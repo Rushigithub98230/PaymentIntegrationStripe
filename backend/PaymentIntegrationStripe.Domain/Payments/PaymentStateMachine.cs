@@ -8,9 +8,12 @@ public static class PaymentStateMachine
 
         return current switch
         {
-            PaymentStatus.Created => next is PaymentStatus.Pending or PaymentStatus.Cancelled,
-            PaymentStatus.Pending => next is PaymentStatus.RequiresAction or PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
-            PaymentStatus.RequiresAction => next is PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
+            // A newly persisted payment can immediately reflect the initial Stripe
+            // PaymentIntent state returned by creation.
+            PaymentStatus.Created => next is PaymentStatus.Pending or PaymentStatus.RequiresPaymentMethod or PaymentStatus.RequiresAction or PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
+            PaymentStatus.Pending => next is PaymentStatus.RequiresPaymentMethod or PaymentStatus.RequiresAction or PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
+            PaymentStatus.RequiresPaymentMethod => next is PaymentStatus.Pending or PaymentStatus.RequiresAction or PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
+            PaymentStatus.RequiresAction => next is PaymentStatus.RequiresPaymentMethod or PaymentStatus.Processing or PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
             PaymentStatus.Processing => next is PaymentStatus.Authorized or PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
             PaymentStatus.Authorized => next is PaymentStatus.Succeeded or PaymentStatus.Failed or PaymentStatus.Cancelled,
             PaymentStatus.Succeeded => next is PaymentStatus.RefundPending or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded,
