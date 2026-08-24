@@ -6,5 +6,6 @@ public interface IPaymentRepository
 {
     Task<Payment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken);
     Task AddAsync(Payment payment, CancellationToken cancellationToken);
+    Task AddAttemptAsync(PaymentAttempt attempt, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
