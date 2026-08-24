@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PaymentIntegrationStripe.Application.Payments;
 using PaymentIntegrationStripe.Infrastructure.Payments;
 using PaymentIntegrationStripe.Infrastructure.Payments.Stripe;
+using PaymentIntegrationStripe.Infrastructure.Persistence;
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,17 +13,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddDbContext<PaymentIntegrationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IMoneyConverter, StripeMoneyConverter>();
-builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.AddScoped<IPaymentGateway, StripePaymentGateway>();
+builder.Services.AddScoped<IPaymentRepository, EfPaymentRepository>();
+builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 
 var stripeOptions = builder.Configuration.GetSection(StripeOptions.SectionName).Get<StripeOptions>()
     ?? throw new InvalidOperationException("Stripe configuration is required.");
-if (string.IsNullOrWhiteSpace(stripeOptions.SecretKey))
-{
-    throw new InvalidOperationException("Stripe:SecretKey must be configured.");
-}
-StripeConfiguration.ApiKey = stripeOptions.SecretKey;
+if (!string.IsNullOrWhiteSpace(stripeOptions.SecretKey))
+    StripeConfiguration.ApiKey = stripeOptions.SecretKey;
 
 var jwtSection = builder.Configuration.GetSection("Authentication:Jwt");
 var signingKey = jwtSection["SigningKey"];
