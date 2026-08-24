@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using PaymentIntegrationStripe.Domain.Orders;
 using PaymentIntegrationStripe.Domain.Payments;
 
 namespace PaymentIntegrationStripe.Infrastructure.Persistence.Configurations;
@@ -21,9 +22,20 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.LastFailureMessage).HasMaxLength(2000);
         builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.Property(x => x.RowVersion).IsRowVersion().IsConcurrencyToken();
+
         builder.HasIndex(x => x.IdempotencyKey).IsUnique();
         builder.HasIndex(x => x.ProviderPaymentIntentId).IsUnique().HasFilter("[ProviderPaymentIntentId] IS NOT NULL");
         builder.HasIndex(x => x.ProviderChargeId).IsUnique().HasFilter("[ProviderChargeId] IS NOT NULL");
         builder.HasIndex(x => new { x.OrderId, x.CreatedAtUtc });
+
+        builder.HasOne<Order>()
+            .WithOne()
+            .HasForeignKey<Payment>(x => x.OrderId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany<PaymentAttempt>().WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany<PaymentTransaction>().WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany<PaymentStatusHistory>().WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany<Refund>().WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
     }
 }
